@@ -1,0 +1,93 @@
+name: Verify prebuilt dist
+
+# Does NOT rebuild anything and needs no Steamworks SDK access - the
+# platform binaries in dist/ are built locally (see the voxel-world
+# repo's memory on this fork) and committed straight to the
+# sdk-v165-built branch. This workflow only checks that what's
+# already committed is well-formed and actually loadable:
+#   - present and non-empty
+#   - the expected binary format for its platform (Mach-O / PE32+ / ELF)
+#   - `require()`-able by real Node on that platform without throwing
+#     (this exercises dlopen/LoadLibrary + napi module registration,
+#     including finding libsteam_api next to the addon via
+#     @loader_path/rpath - it does NOT call init(), so it doesn't need
+#     a Steam client running or an app ID)
+
+on:
+    push:
+        branches: [sdk-v165-built]
+    pull_request:
+        branches: [sdk-v165-built]
+    workflow_dispatch:
+
+jobs:
+    verify-macos:
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Check files exist
+              run: |
+                  test -f dist/osx/steamworksjs.darwin-arm64.node
+                  test -f dist/osx/libsteam_api.dylib
+
+            - name: Check binary format
+              run: |
+                  file dist/osx/steamworksjs.darwin-arm64.node | grep -q "Mach-O"
+                  file dist/osx/libsteam_api.dylib | grep -q "Mach-O"
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22.x
+
+            - name: Load-test the native addon
+              run: node -e "require('./index.js'); console.log('loaded OK')"
+
+    verify-windows:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Check files exist
+              shell: bash
+              run: |
+                  test -f dist/win64/steamworksjs.win32-x64-msvc.node
+                  test -f dist/win64/steam_api64.dll
+
+            - name: Check binary format
+              shell: bash
+              run: |
+                  file dist/win64/steamworksjs.win32-x64-msvc.node | grep -q "PE32"
+                  file dist/win64/steam_api64.dll | grep -q "PE32"
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22.x
+
+            - name: Load-test the native addon
+              run: node -e "require('./index.js'); console.log('loaded OK')"
+
+    verify-linux:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Check files exist
+              run: |
+                  test -f dist/linux64/steamworksjs.linux-x64-gnu.node
+                  test -f dist/linux64/libsteam_api.so
+
+            - name: Check binary format
+              run: |
+                  file dist/linux64/steamworksjs.linux-x64-gnu.node | grep -q "ELF"
+                  file dist/linux64/libsteam_api.so | grep -q "ELF"
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22.x
+
+            - name: Load-test the native addon
+              run: node -e "require('./index.js'); console.log('loaded OK')"
