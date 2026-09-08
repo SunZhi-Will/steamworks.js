@@ -327,7 +327,7 @@ dependencies = [
 [[package]]
 name = "steamworks"
 version = "0.13.1"
-source = "git+https://github.com/SunZhi-Will/steamworks-rs?branch=sdk-v165#01e53ffd8bc0b262011f19dc4eec66b0ba448b9e"
+source = "git+https://github.com/SunZhi-Will/steamworks-rs?branch=sdk-v165#2f8cfd042aac160c93b89ba439e9a4b0505edb50"
 dependencies = [
  "bitflags",
  "paste",
@@ -339,7 +339,7 @@ dependencies = [
 [[package]]
 name = "steamworks-sys"
 version = "0.13.0"
-source = "git+https://github.com/SunZhi-Will/steamworks-rs?branch=sdk-v165#01e53ffd8bc0b262011f19dc4eec66b0ba448b9e"
+source = "git+https://github.com/SunZhi-Will/steamworks-rs?branch=sdk-v165#2f8cfd042aac160c93b89ba439e9a4b0505edb50"
 
 [[package]]
 name = "steamworksjs"
