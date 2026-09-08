@@ -56,7 +56,8 @@ export declare namespace callback {
     P2PSessionRequest = 6,
     P2PSessionConnectFail = 7,
     GameLobbyJoinRequested = 8,
-    MicroTxnAuthorizationResponse = 9
+    MicroTxnAuthorizationResponse = 9,
+    GameRichPresenceJoinRequested = 10
   }
   export function register<C extends keyof import('./callbacks').CallbackReturns>(steamCallback: C, handler: (value: import('./callbacks').CallbackReturns[C]) => void): Handle
   export class Handle {
@@ -188,6 +189,23 @@ export declare namespace networking {
   export function isP2PPacketAvailable(): number
   export function readP2PPacket(size: number): P2PPacket
   export function acceptP2PSession(steamId64: bigint): void
+  export interface P2PSessionState {
+    connectionActive: boolean
+    connecting: boolean
+    usingRelay: boolean
+    sessionError: number
+    bytesQueued: number
+    packetsQueued: number
+  }
+  /**
+   * Gets the connection state to the specified user.
+   *
+   * Returns `null` if there is no active P2P session with the given user
+   * (mirrors `ISteamNetworking::GetP2PSessionState` returning `false`).
+   */
+  export function getP2PSessionState(steamId64: bigint): P2PSessionState | null
+  /** Closes the p2p connection to the given user, freeing up resources under the hood. */
+  export function closeP2PSession(steamId64: bigint): boolean
 }
 export declare namespace overlay {
   export const enum Dialog {

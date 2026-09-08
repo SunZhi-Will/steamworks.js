@@ -93,4 +93,43 @@ pub mod networking {
             .networking()
             .accept_p2p_session(SteamId::from_raw(steam_id64.get_u64().1));
     }
+
+    #[napi(object)]
+    pub struct P2PSessionState {
+        pub connection_active: bool,
+        pub connecting: bool,
+        pub using_relay: bool,
+        pub session_error: u32,
+        pub bytes_queued: i32,
+        pub packets_queued: i32,
+    }
+
+    /// Gets the connection state to the specified user.
+    ///
+    /// Returns `null` if there is no active P2P session with the given user
+    /// (mirrors `ISteamNetworking::GetP2PSessionState` returning `false`).
+    #[napi]
+    pub fn get_p2p_session_state(steam_id64: BigInt) -> Option<P2PSessionState> {
+        let client = crate::client::get_client();
+        client
+            .networking()
+            .get_p2p_session_state(SteamId::from_raw(steam_id64.get_u64().1))
+            .map(|state| P2PSessionState {
+                connection_active: state.connection_active,
+                connecting: state.connecting,
+                using_relay: state.using_relay,
+                session_error: u8::from(state.error) as u32,
+                bytes_queued: state.bytes_queued_for_send,
+                packets_queued: state.packets_queued_for_send,
+            })
+    }
+
+    /// Closes the p2p connection to the given user, freeing up resources under the hood.
+    #[napi]
+    pub fn close_p2p_session(steam_id64: BigInt) -> bool {
+        let client = crate::client::get_client();
+        client
+            .networking()
+            .close_p2p_session(SteamId::from_raw(steam_id64.get_u64().1))
+    }
 }
