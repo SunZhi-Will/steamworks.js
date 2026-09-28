@@ -57,7 +57,9 @@ export declare namespace callback {
     P2PSessionConnectFail = 7,
     GameLobbyJoinRequested = 8,
     MicroTxnAuthorizationResponse = 9,
-    GameRichPresenceJoinRequested = 10
+    GameRichPresenceJoinRequested = 10,
+    NetworkingMessagesSessionRequest = 11,
+    NetworkingMessagesSessionFailed = 12
   }
   export function register<C extends keyof import('./callbacks').CallbackReturns>(steamCallback: C, handler: (value: import('./callbacks').CallbackReturns[C]) => void): Handle
   export class Handle {
@@ -77,6 +79,46 @@ export declare namespace cloud {
     name: string
     size: bigint
   }
+}
+export declare namespace friends {
+  /** EFriendFlags, combine with bitwise OR. */
+  export const enum FriendFlags {
+    None = 0,
+    Blocked = 1,
+    FriendshipRequested = 2,
+    Immediate = 4,
+    ClanMember = 8,
+    OnGameServer = 16,
+    RequestingFriendship = 128,
+    RequestingInfo = 256,
+    Ignored = 512,
+    IgnoredFriend = 1024,
+    ChatMember = 4096,
+    All = 65535
+  }
+  /** EPersonaState. */
+  export const enum PersonaState {
+    Offline = 0,
+    Online = 1,
+    Busy = 2,
+    Away = 3,
+    Snooze = 4,
+    LookingToTrade = 5,
+    LookingToPlay = 6,
+    Invisible = 7
+  }
+  export interface FriendInfo {
+    steamId64: bigint
+    name: string
+    state: number
+    /** App the friend is running, null when not in a game. */
+    gameAppId?: number
+    /** Lobby the friend is in for that game, null when none. */
+    gameLobbyId?: bigint
+  }
+  export function getFriends(flags: number): Array<FriendInfo>
+  /** Raw EFriendRelationship (3 = Friend). */
+  export function getFriendRelationship(steamId64: bigint): number
 }
 export declare namespace input {
   export const enum InputType {
@@ -132,6 +174,60 @@ export declare namespace matchmaking {
   export function createLobby(lobbyType: LobbyType, maxMembers: number): Promise<Lobby>
   export function joinLobby(lobbyId: bigint): Promise<Lobby>
   export function getLobbies(): Promise<Array<Lobby>>
+  /** ELobbyComparison for lobby-list filters. */
+  export const enum LobbyComparison {
+    EqualToOrLessThan = -2,
+    LessThan = -1,
+    Equal = 0,
+    GreaterThan = 1,
+    EqualToOrGreaterThan = 2,
+    NotEqual = 3
+  }
+  /** ELobbyDistanceFilter. Use Worldwide to find a friend's room by code. */
+  export const enum LobbyDistanceFilter {
+    Close = 0,
+    Default = 1,
+    Far = 2,
+    Worldwide = 3
+  }
+  export interface LobbyStringFilter {
+    key: string
+    value: string
+    comparison: number
+  }
+  export interface LobbyNumberFilter {
+    key: string
+    value: number
+    comparison: number
+  }
+  export interface LobbyListFilter {
+    strings?: Array<LobbyStringFilter>
+    numbers?: Array<LobbyNumberFilter>
+    distance?: number
+    resultCount?: number
+    slotsAvailable?: number
+  }
+  /**
+   * RequestLobbyList with filters applied immediately before the call
+   * (Steam clears them after every request). Resolves to lobby ids; their
+   * data is readable right away with getLobbyDataById. Only Public and
+   * Invisible, joinable, not-full lobbies are ever returned.
+   */
+  export function requestLobbyListFiltered(filter: LobbyListFilter): Promise<Array<bigint>>
+  /**
+   * Lobby data for any lobby we have data for (search results, lobbies we
+   * are in, or after requestLobbyData). '' when unknown.
+   */
+  export function getLobbyDataById(lobbyId: bigint, key: string): string
+  export function getLobbyMemberCount(lobbyId: bigint): number
+  export function getLobbyMemberLimit(lobbyId: bigint): number
+  /**
+   * Ask Steam for a lobby's data without joining it (a friend's room).
+   * LobbyDataUpdate fires when it arrives.
+   */
+  export function requestLobbyData(lobbyId: bigint): boolean
+  /** Invite a user to a lobby without the overlay (the in-game invite list). */
+  export function inviteUserToLobby(lobbyId: bigint, steamId64: bigint): boolean
   export class Lobby {
     id: bigint
     join(): Promise<Lobby>
@@ -206,6 +302,69 @@ export declare namespace networking {
   export function getP2PSessionState(steamId64: bigint): P2PSessionState | null
   /** Closes the p2p connection to the given user, freeing up resources under the hood. */
   export function closeP2PSession(steamId64: bigint): boolean
+}
+export declare namespace networkingMessages {
+  /** k_nSteamNetworkingSend_* flags for `sendMessageToUser`. */
+  export const enum SendFlags {
+    Unreliable = 0,
+    NoNagle = 1,
+    NoDelay = 4,
+    UnreliableNoDelay = 5,
+    Reliable = 8,
+    ReliableNoNagle = 9,
+    AutoRestartBrokenSession = 32
+  }
+  export interface NetworkingMessage {
+    steamId64: bigint
+    data: Buffer
+    channel: number
+  }
+  export interface SessionConnectionInfo {
+    state: number
+    endReason: number
+    endDebug: string
+    relayed: boolean
+    ping: number
+    qualityLocal: number
+    qualityRemote: number
+    outBytesPerSec: number
+    inBytesPerSec: number
+    pendingUnreliable: number
+    pendingReliable: number
+    sentUnackedReliable: number
+    queueTimeUsec: number
+  }
+  /** Returns the raw EResult (1 = OK). */
+  export function sendMessageToUser(steamId64: bigint, data: Buffer, flags: number, channel: number): number
+  /**
+   * Pulls up to `maxMessages` from one channel. Every message is copied
+   * into a Buffer and released before returning.
+   */
+  export function receiveMessagesOnChannel(channel: number, maxMessages: number): Array<NetworkingMessage>
+  export function acceptSessionWithUser(steamId64: bigint): boolean
+  export function closeSessionWithUser(steamId64: bigint): boolean
+  export function closeChannelWithUser(steamId64: bigint, channel: number): boolean
+  /** null when there is no session with that user. */
+  export function getSessionConnectionInfo(steamId64: bigint): SessionConnectionInfo | null
+}
+export declare namespace networkingUtils {
+  /**
+   * Start measuring relay pings now, so the first P2P connection does not
+   * pay for it.
+   */
+  export function initRelayNetworkAccess(): void
+  /** Raw ESteamNetworkingAvailability (100 = Current). */
+  export function getRelayNetworkStatus(): number
+  /**
+   * This machine's ping location as a string (safe to put in lobby data),
+   * or null until relay pings have been measured.
+   */
+  export function getLocalPingLocation(): string | null
+  /**
+   * Estimated round trip in ms from this machine to a ping-location
+   * string, or -1 when it can't be parsed or estimated.
+   */
+  export function estimatePingFromLocalHost(location: string): number
 }
 export declare namespace overlay {
   export const enum Dialog {

@@ -204,4 +204,164 @@ pub mod matchmaking {
             })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
+
+    #[napi]
+    /// ELobbyComparison for lobby-list filters.
+    pub enum LobbyComparison {
+        EqualToOrLessThan = -2,
+        LessThan = -1,
+        Equal = 0,
+        GreaterThan = 1,
+        EqualToOrGreaterThan = 2,
+        NotEqual = 3,
+    }
+
+    #[napi]
+    /// ELobbyDistanceFilter. Use Worldwide to find a friend's room by code.
+    pub enum LobbyDistanceFilter {
+        Close = 0,
+        Default = 1,
+        Far = 2,
+        Worldwide = 3,
+    }
+
+    #[napi(object)]
+    pub struct LobbyStringFilter {
+        pub key: String,
+        pub value: String,
+        pub comparison: i32,
+    }
+
+    #[napi(object)]
+    pub struct LobbyNumberFilter {
+        pub key: String,
+        pub value: i32,
+        pub comparison: i32,
+    }
+
+    #[napi(object)]
+    pub struct LobbyListFilter {
+        pub strings: Option<Vec<LobbyStringFilter>>,
+        pub numbers: Option<Vec<LobbyNumberFilter>>,
+        pub distance: Option<i32>,
+        pub result_count: Option<i32>,
+        pub slots_available: Option<i32>,
+    }
+
+    fn mm_iface() -> *mut steamworks::sys::ISteamMatchmaking {
+        let _ = crate::client::get_client();
+        unsafe { steamworks::sys::SteamAPI_SteamMatchmaking_v009() }
+    }
+
+    fn comparison(v: i32) -> steamworks::sys::ELobbyComparison {
+        use steamworks::sys::ELobbyComparison as C;
+        match v {
+            -2 => C::k_ELobbyComparisonEqualToOrLessThan,
+            -1 => C::k_ELobbyComparisonLessThan,
+            1 => C::k_ELobbyComparisonGreaterThan,
+            2 => C::k_ELobbyComparisonEqualToOrGreaterThan,
+            3 => C::k_ELobbyComparisonNotEqual,
+            _ => C::k_ELobbyComparisonEqual,
+        }
+    }
+
+    fn distance(v: i32) -> steamworks::sys::ELobbyDistanceFilter {
+        use steamworks::sys::ELobbyDistanceFilter as D;
+        match v {
+            0 => D::k_ELobbyDistanceFilterClose,
+            2 => D::k_ELobbyDistanceFilterFar,
+            3 => D::k_ELobbyDistanceFilterWorldwide,
+            _ => D::k_ELobbyDistanceFilterDefault,
+        }
+    }
+
+    /// RequestLobbyList with filters applied immediately before the call
+    /// (Steam clears them after every request). Resolves to lobby ids; their
+    /// data is readable right away with getLobbyDataById. Only Public and
+    /// Invisible, joinable, not-full lobbies are ever returned.
+    #[napi]
+    pub async fn request_lobby_list_filtered(filter: LobbyListFilter) -> Result<Vec<BigInt>, Error> {
+        let client = crate::client::get_client();
+        let mm = mm_iface();
+        if !mm.is_null() {
+            unsafe {
+                for f in filter.strings.unwrap_or_default() {
+                    let (Ok(k), Ok(v)) = (std::ffi::CString::new(f.key), std::ffi::CString::new(f.value)) else { continue };
+                    steamworks::sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListStringFilter(mm, k.as_ptr(), v.as_ptr(), comparison(f.comparison));
+                }
+                for f in filter.numbers.unwrap_or_default() {
+                    let Ok(k) = std::ffi::CString::new(f.key) else { continue };
+                    steamworks::sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListNumericalFilter(mm, k.as_ptr(), f.value, comparison(f.comparison));
+                }
+                if let Some(d) = filter.distance {
+                    steamworks::sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListDistanceFilter(mm, distance(d));
+                }
+                if let Some(n) = filter.result_count {
+                    steamworks::sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListResultCountFilter(mm, n);
+                }
+                if let Some(n) = filter.slots_available {
+                    steamworks::sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListFilterSlotsAvailable(mm, n);
+                }
+            }
+        }
+
+        let (tx, rx) = oneshot::channel();
+        client.matchmaking().request_lobby_list(|lobbies| {
+            let _ = tx.send(lobbies);
+        });
+        rx.await
+            .map_err(|_| Error::from_reason("lobby list request dropped".to_string()))?
+            .map(|lobbies| lobbies.iter().map(|l| BigInt::from(l.raw())).collect())
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Lobby data for any lobby we have data for (search results, lobbies we
+    /// are in, or after requestLobbyData). '' when unknown.
+    #[napi]
+    pub fn get_lobby_data_by_id(lobby_id: BigInt, key: String) -> String {
+        let client = crate::client::get_client();
+        client
+            .matchmaking()
+            .lobby_data(LobbyId::from_raw(lobby_id.get_u64().1), &key)
+            .map(|s| s.to_string())
+            .unwrap_or_default()
+    }
+
+    #[napi]
+    pub fn get_lobby_member_count(lobby_id: BigInt) -> u32 {
+        let client = crate::client::get_client();
+        client.matchmaking().lobby_member_count(LobbyId::from_raw(lobby_id.get_u64().1)) as u32
+    }
+
+    #[napi]
+    pub fn get_lobby_member_limit(lobby_id: BigInt) -> u32 {
+        let client = crate::client::get_client();
+        client
+            .matchmaking()
+            .lobby_member_limit(LobbyId::from_raw(lobby_id.get_u64().1))
+            .unwrap_or(0) as u32
+    }
+
+    /// Ask Steam for a lobby's data without joining it (a friend's room).
+    /// LobbyDataUpdate fires when it arrives.
+    #[napi]
+    pub fn request_lobby_data(lobby_id: BigInt) -> bool {
+        let mm = mm_iface();
+        if mm.is_null() {
+            return false;
+        }
+        unsafe { steamworks::sys::SteamAPI_ISteamMatchmaking_RequestLobbyData(mm, lobby_id.get_u64().1) }
+    }
+
+    /// Invite a user to a lobby without the overlay (the in-game invite list).
+    #[napi]
+    pub fn invite_user_to_lobby(lobby_id: BigInt, steam_id64: BigInt) -> bool {
+        let mm = mm_iface();
+        if mm.is_null() {
+            return false;
+        }
+        unsafe {
+            steamworks::sys::SteamAPI_ISteamMatchmaking_InviteUserToLobby(mm, lobby_id.get_u64().1, steam_id64.get_u64().1)
+        }
+    }
 }

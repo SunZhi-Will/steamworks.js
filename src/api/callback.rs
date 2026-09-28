@@ -33,6 +33,8 @@ pub mod callback {
         GameLobbyJoinRequested,
         MicroTxnAuthorizationResponse,
         GameRichPresenceJoinRequested,
+        NetworkingMessagesSessionRequest,
+        NetworkingMessagesSessionFailed,
     }
 
     #[napi(ts_generic_types = "C extends keyof import('./callbacks').CallbackReturns")]
@@ -78,6 +80,23 @@ pub mod callback {
             }
             SteamCallback::GameRichPresenceJoinRequested => {
                 register_callback::<steamworks::GameRichPresenceJoinRequested>(threadsafe_handler)
+            }
+            // These two carry u64 ids the same way the serde-derived payloads
+            // above do (so the JS side sees the same shape), built by hand
+            // because steamworks-rs's own structs are not Serialize.
+            SteamCallback::NetworkingMessagesSessionRequest => {
+                let client = crate::client::get_client();
+                client.register_callback(move |v: crate::api::networking_messages::MessagesSessionRequest| {
+                    let value = serde_json::json!({ "remote": v.remote });
+                    threadsafe_handler.call(value, ThreadsafeFunctionCallMode::Blocking);
+                })
+            }
+            SteamCallback::NetworkingMessagesSessionFailed => {
+                let client = crate::client::get_client();
+                client.register_callback(move |v: crate::api::networking_messages::MessagesSessionFailed| {
+                    let value = serde_json::json!({ "remote": v.remote, "endReason": v.end_reason, "state": v.state });
+                    threadsafe_handler.call(value, ThreadsafeFunctionCallMode::Blocking);
+                })
             }
         };
 

@@ -57,4 +57,12 @@ export interface CallbackReturns {
         friend_steam_id: bigint
         connect: string
     }
+    [client.callback.SteamCallback.NetworkingMessagesSessionRequest]: {
+        remote: bigint
+    }
+    [client.callback.SteamCallback.NetworkingMessagesSessionFailed]: {
+        remote: bigint
+        endReason: number
+        state: number
+    }
 }
