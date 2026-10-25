@@ -644,3 +644,66 @@ export declare namespace workshop {
   export function getAllItems(page: number, queryType: UGCQueryType, itemType: UGCType, creatorAppId: number, consumerAppId: number, queryConfig?: WorkshopItemQueryConfig | undefined | null): Promise<WorkshopPaginatedResult>
   export function getUserItems(page: number, accountId: number, listType: UserListType, itemType: UGCType, sortOrder: UserListOrder, appIds: AppIDs, queryConfig?: WorkshopItemQueryConfig | undefined | null): Promise<WorkshopPaginatedResult>
 }
+export declare namespace gameServer {
+  export interface SessionFailure {
+    steamId64: bigint
+    endReason: number
+    state: number
+  }
+  /**
+   * Starts the game server. `appId` is the GAME's AppID (Steam runs a
+   * dedicated server under its base game). Ports: 0 lets Steam pick the
+   * game port; the query port can share the game socket (QUERY_PORT_SHARED)
+   * because this server never answers server-browser pings itself.
+   * Call `logOnAnonymous` next; `isLoggedOn` turns true once Steam answers.
+   */
+  export function init(appId: number, gamePort: number, version: string): void
+  export function isInitialized(): boolean
+  /** Server identity and browser fields. Safe to call before or after logon. */
+  export function configure(product: string, description: string, serverName: string, maxPlayers: number, passwordProtected: boolean): void
+  export function setGameTags(tags: string): void
+  export function setKeyValue(key: string, value: string): void
+  export function setAdvertiseServerActive(active: boolean): void
+  export function logOnAnonymous(): void
+  export function isLoggedOn(): boolean
+  /** The server's own Steam ID (valid once logged on; 0 before). */
+  export function steamId64(): bigint
+  export function runCallbacks(): void
+  /** Lets P2P sessions to this server go over Valve's relay network. */
+  export function initRelayNetworkAccess(): void
+  export function takeSessionRequests(): Array<bigint>
+  export function takeSessionFailures(): Array<SessionFailure>
+  /** 'connected' / 'disconnected' / 'connectFailure', oldest first. */
+  export function takeEvents(): Array<string>
+  /** Returns the raw EResult (1 = OK). */
+  export function sendMessageToUser(steamId64: bigint, data: Buffer, flags: number, channel: number): number
+  export function receiveMessagesOnChannel(channel: number, maxMessages: number): Array<NetworkingMessage>
+  export function acceptSessionWithUser(steamId64: bigint): boolean
+  export function closeSessionWithUser(steamId64: bigint): boolean
+  /** Logs off and shuts the game server API down. */
+  export function shutdown(): void
+}
+export declare namespace serverList {
+  export interface FoundServer {
+    steamId64: bigint
+    name: string
+    tags: string
+    players: number
+    maxPlayers: number
+    responded: boolean
+  }
+  export interface ServerListResult {
+    done: boolean
+    servers: Array<FoundServer>
+  }
+  /**
+   * Starts an internet server list query for `appId` with `filters`
+   * (pairs of [key, value], see ISteamMatchmakingServers). Returns 0 when it
+   * could not start (no Steam client, bad filter).
+   */
+  export function request(appId: number, filters: Array<Array<string>>): number
+  /** What arrived so far. Once `done` is true the request is released. */
+  export function take(id: number): ServerListResult
+  /** Gives up on a query that is still running. */
+  export function cancel(id: number): void
+}

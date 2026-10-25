@@ -75,3 +75,11 @@ module.exports.electronEnableSteamOverlay = (disableEachFrameInvalidation) => {
 
 const SteamCallback = nativeBinding.callback.SteamCallback
 module.exports.SteamCallback = SteamCallback
+
+/**
+ * Dedicated server: the game-server flavour of the Steam API (anonymous
+ * logon, own game-server Steam ID). Usable WITHOUT calling `init` — a
+ * dedicated server must not log in as the local Steam user.
+ * @type {Client['gameServer']}
+ */
+module.exports.gameServer = nativeBinding.gameServer
